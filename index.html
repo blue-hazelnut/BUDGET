@@ -393,7 +393,7 @@ tr:hover td{background:#F8FAFB}
         const [depDraft, setDepDraft] = useState({}); // {fundId: {amt, memo}}
         const [edit, setEdit] = useState(null); // {id, field}
         const [draft, setDraft] = useState('');
-        const [cut, setCut] = useState(10);
+        const [nextDraft, setNextDraft] = useState({}); // 다음달 예산 짜기: 사용자가 직접 고친 항목만 담음
         const [note, setNote] = useState('');
         const [form, setForm] = useState({
           cat: '식재료',
@@ -490,6 +490,11 @@ tr:hover td{background:#F8FAFB}
             document.removeEventListener('visibilitychange', onVis);
           };
         }, []);
+
+        // 보고 있는 달이 바뀌면 다음달 예산 초안도 새로 시작한다
+        useEffect(() => {
+          setNextDraft({});
+        }, [ym]);
 
         const month = useMemo(
           () =>
@@ -770,6 +775,16 @@ tr:hover td{background:#F8FAFB}
           0,
         );
         const nextYm = shiftYm(ym, 1);
+        // 전월(=지금 보고 있는 달) 예산을 기준값으로 삼는다.
+        // 외식·식재료는 하루 예산 × 일수라 항상 자동 계산되고, 나머지는 전월 예산을 시작점으로 직접 조정한다.
+        const prevBudgetOf = (c) =>
+          DAILY_CATS.includes(c)
+            ? (dailyBudgets[c] ?? 0) * dim(ym)
+            : (month.budgets[c] ?? 0);
+        const nextValueOf = (c) => {
+          if (DAILY_CATS.includes(c)) return (dailyBudgets[c] ?? 0) * dim(nextYm);
+          return nextDraft[c] !== undefined ? nextDraft[c] : (month.budgets[c] ?? 0);
+        };
         const proposal = cats
           .filter(
             (c) =>
@@ -778,30 +793,26 @@ tr:hover td{background:#F8FAFB}
               DAILY_CATS.includes(c),
           )
           .map((c) => {
-            const spent = monthSpentBy[c] || 0;
-            if (DAILY_CATS.includes(c)) {
-              const daily = dailyBudgets[c] ?? 0;
-              return {
-                cat: c,
-                spent,
-                next: daily * dim(nextYm),
-                week: daily * 7,
-                daily,
-              };
-            }
-            const inWeekly = WEEKLY_CATS.includes(c);
-            const next = inWeekly
-              ? Math.round((spent * (100 - cut)) / 100 / 1000) * 1000
-              : spent;
+            const prev = prevBudgetOf(c);
+            const next = nextValueOf(c);
             return {
               cat: c,
-              spent,
+              spent: monthSpentBy[c] || 0,
+              prev,
               next,
-              week: inWeekly ? Math.round(next / (dim(ym) / 7) / 100) * 100 : 0,
+              diff: next - prev,
+              editable: !DAILY_CATS.includes(c),
             };
           })
           .sort((a, b) => b.next - a.next);
         const propTotal = proposal.reduce((s, p) => s + p.next, 0);
+        const prevTotal = proposal.reduce((s, p) => s + p.prev, 0);
+
+        const setDraftAmt = (cat, v) =>
+          setNextDraft((d) => ({
+            ...d,
+            [cat]: Number(String(v).replace(/[^\d]/g, '')) || 0,
+          }));
 
         const applyNext = () => {
           setData((d) => {
@@ -811,6 +822,7 @@ tr:hover td{background:#F8FAFB}
             n.months[nextYm] = { budgets: b, tx: n.months[nextYm]?.tx || [] };
             return n;
           });
+          setNextDraft({});
           setYm(nextYm);
           setNote(`${labelYm(nextYm)} 예산을 저장했습니다.`);
         };
@@ -1864,38 +1876,24 @@ tr:hover td{background:#F8FAFB}
 
                 <div className='card' style={{ alignSelf: 'start' }}>
                   <div className='eyebrow'>{labelYm(nextYm)} 예산 짜기</div>
-                  <div className='row' style={{ marginTop: 12, gap: 10 }}>
-                    <span style={{ fontSize: 13 }}>절감 목표</span>
-                    <input
-                      type='range'
-                      min='0'
-                      max='30'
-                      step='5'
-                      value={cut}
-                      onChange={(e) => setCut(Number(e.target.value))}
-                      style={{ flex: 1 }}
-                    />
-                    <span
-                      className='num'
-                      style={{ fontSize: 13, width: 34, textAlign: 'right' }}
-                    >
-                      {cut}%
-                    </span>
-                  </div>
                   <div
                     style={{ fontSize: 12, color: 'var(--mute)', marginTop: 6 }}
                   >
-                    {labelYm(ym)} 실사용액에서 {cut}%를 뺀 값. 고정비는 그대로.
-                    외식·식재료는 하루 예산({won(dailyBudgets['외식'] ?? 0)}/
-                    {won(dailyBudgets['식재료'] ?? 0)})에 그 달 일수를 곱한
-                    값이라 절감률과 무관합니다.
+                    {labelYm(ym)} 예산을 시작점으로 항목별 금액을 직접
+                    조정하세요. 외식·식재료는 하루 예산(
+                    {won(dailyBudgets['외식'] ?? 0)}/
+                    {won(dailyBudgets['식재료'] ?? 0)})에 그 달 일수를 곱해
+                    자동 계산됩니다.
                   </div>
                   <table style={{ marginTop: 12 }}>
                     <thead>
                       <tr>
                         <th>분류</th>
-                        <th style={{ textAlign: 'right' }}>월 예산</th>
-                        <th style={{ textAlign: 'right' }}>주 예산</th>
+                        <th style={{ textAlign: 'right' }}>전월 예산</th>
+                        <th style={{ textAlign: 'right' }}>
+                          {labelYm(nextYm)} 예산
+                        </th>
+                        <th style={{ textAlign: 'right' }}>증감</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1904,20 +1902,58 @@ tr:hover td{background:#F8FAFB}
                           <td>{p.cat}</td>
                           <td
                             className='num'
-                            style={{ textAlign: 'right', fontWeight: 600 }}
+                            style={{ textAlign: 'right', color: 'var(--mute)' }}
                           >
-                            {won(p.next)}
+                            {won(p.prev)}
+                          </td>
+                          <td className='num' style={{ textAlign: 'right' }}>
+                            {p.editable ? (
+                              <input
+                                className='inp num'
+                                style={{
+                                  width: 110,
+                                  textAlign: 'right',
+                                  padding: '4px 6px',
+                                }}
+                                value={p.next}
+                                onChange={(e) =>
+                                  setDraftAmt(p.cat, e.target.value)
+                                }
+                                inputMode='numeric'
+                              />
+                            ) : (
+                              <span style={{ fontWeight: 600 }}>
+                                {won(p.next)}
+                              </span>
+                            )}
                           </td>
                           <td
                             className='num'
-                            style={{ textAlign: 'right', color: 'var(--mute)' }}
+                            style={{
+                              textAlign: 'right',
+                              color:
+                                p.diff > 0
+                                  ? 'var(--over)'
+                                  : p.diff < 0
+                                    ? 'var(--good)'
+                                    : 'var(--mute)',
+                            }}
                           >
-                            {p.week ? won(p.week) : '—'}
+                            {p.diff === 0
+                              ? '—'
+                              : (p.diff > 0 ? '+' : '-') +
+                                won(Math.abs(p.diff))}
                           </td>
                         </tr>
                       ))}
                       <tr>
                         <td style={{ fontWeight: 700 }}>합계</td>
+                        <td
+                          className='num'
+                          style={{ textAlign: 'right', color: 'var(--mute)' }}
+                        >
+                          {won(prevTotal)}
+                        </td>
                         <td
                           className='num'
                           style={{ textAlign: 'right', fontWeight: 700 }}
@@ -1926,9 +1962,21 @@ tr:hover td{background:#F8FAFB}
                         </td>
                         <td
                           className='num'
-                          style={{ textAlign: 'right', color: 'var(--mute)' }}
+                          style={{
+                            textAlign: 'right',
+                            fontWeight: 700,
+                            color:
+                              propTotal - prevTotal > 0
+                                ? 'var(--over)'
+                                : propTotal - prevTotal < 0
+                                  ? 'var(--good)'
+                                  : 'var(--mute)',
+                          }}
                         >
-                          {won(proposal.reduce((s, p) => s + p.week, 0))}
+                          {propTotal === prevTotal
+                            ? '—'
+                            : (propTotal > prevTotal ? '+' : '-') +
+                              won(Math.abs(propTotal - prevTotal))}
                         </td>
                       </tr>
                     </tbody>
@@ -1936,7 +1984,7 @@ tr:hover td{background:#F8FAFB}
                   <div
                     style={{ fontSize: 12, color: 'var(--mute)', marginTop: 8 }}
                   >
-                    {labelYm(ym)} 사용 {won(monthTotalSpent)} → {won(propTotal)}
+                    참고: {labelYm(ym)} 실사용액 {won(monthTotalSpent)}
                   </div>
                   <button
                     className='btn solid'
