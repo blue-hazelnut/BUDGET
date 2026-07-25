@@ -1,0 +1,1977 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover"
+    />
+    <title>가계부</title>
+    <meta name="theme-color" content="#141C26" />
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta
+      name="apple-mobile-web-app-status-bar-style"
+      content="black-translucent"
+    />
+    <meta name="apple-mobile-web-app-title" content="가계부" />
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        background: #ebeef2;
+        -webkit-tap-highlight-color: transparent;
+      }
+      #root {
+        min-height: 100vh;
+        min-height: 100dvh;
+      }
+      .hb {
+        padding-top: calc(20px + env(safe-area-inset-top)) !important;
+        padding-bottom: calc(60px + env(safe-area-inset-bottom)) !important;
+      }
+      #boot {
+        font:
+          14px/1.5 -apple-system,
+          BlinkMacSystemFont,
+          'Apple SD Gothic Neo',
+          sans-serif;
+        color: #8592a3;
+        padding: 40px 20px;
+        text-align: center;
+      }
+    </style>
+    <script
+      crossorigin
+      src="https://unpkg.com/react@18/umd/react.production.min.js"
+    ></script>
+    <script
+      crossorigin
+      src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"
+    ></script>
+    <script src="https://unpkg.com/@babel/standalone@7/babel.min.js"></script>
+  </head>
+  <body>
+    <div id="root"><div id="boot">불러오는 중…</div></div>
+
+    <script type="text/babel" data-presets="react">
+      const { useState, useEffect, useMemo, useRef } = React;
+
+      const KEY = 'hb_ledger_v1';
+
+      /* ════════════════════════════════════════════════════════════════
+   공유 저장소 설정 — 두 사람이 같이 쓰려면 아래 URL을 채우세요.
+   구글 Apps Script 웹앱 URL을 따옴표 안에 붙여넣습니다.
+   (배포 방법은 함께 드린 안내문 참고. 비워두면 이 기기에서만 저장됩니다.)
+    TOKEN 은 Apps Script 쪽과 값이 같기만 하면 됩니다. 바꿔도 되고 그대로 둬도 됩니다.
+   ════════════════════════════════════════════════════════════════ */
+      const API =
+        'https://script.google.com/a/macros/gartenst.com/s/AKfycbzu_EFq2W_snl76QxuuQ1TmmOuI7WxRKxSjiOr6QwZ8eu_nNsGohoJWbN3IcoBRjkll/exec';
+      const TOKEN = 'milliner-budget';
+
+      const cloudOn = () =>
+        typeof API === 'string' && API.indexOf('http') === 0;
+      const cloudURL = () =>
+        API +
+        (API.indexOf('?') >= 0 ? '&' : '?') +
+        'token=' +
+        encodeURIComponent(TOKEN);
+      async function cloudGet() {
+        const r = await fetch(cloudURL(), { method: 'GET' });
+        const t = await r.text();
+        return t ? JSON.parse(t) : null;
+      }
+      async function cloudPut(state) {
+        await fetch(cloudURL(), {
+          method: 'POST',
+          body: JSON.stringify(state),
+        });
+      }
+
+      const CSS = `
+:root{
+  --ink:#141C26; --ink2:#4A5765; --mute:#8592A3;
+  --paper:#EBEEF2; --card:#FFFFFF; --line:#D7DDE5;
+  --good:#1F6F5C; --over:#BF3F27; --amber:#B8860B; --fixed:#3B5C8A;
+}
+*{box-sizing:border-box}
+.hb{background:var(--paper);color:var(--ink);min-height:100%;
+  font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Pretendard","Noto Sans KR","Malgun Gothic",sans-serif;
+  padding:20px 16px 60px;}
+.num{font-family:ui-monospace,SFMono-Regular,Menlo,"Courier New",monospace;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.wrap{max-width:1080px;margin:0 auto}
+.card{background:var(--card);border:1px solid var(--line);border-radius:2px;padding:18px}
+.eyebrow{font-size:10px;letter-spacing:.18em;color:var(--mute);text-transform:uppercase;font-weight:700}
+.h1{font-size:22px;font-weight:800;letter-spacing:-.02em;margin:2px 0 0}
+.btn{border:1px solid var(--line);background:#fff;color:var(--ink);padding:7px 12px;border-radius:2px;font-size:13px;cursor:pointer}
+.btn:hover{border-color:var(--ink2)}
+.btn:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--ink);outline-offset:1px}
+.btn.solid{background:var(--ink);color:#fff;border-color:var(--ink)}
+.btn.solid:hover{background:#000}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:2px;overflow:hidden}
+.seg button{border:none;background:#fff;padding:7px 14px;font-size:13px;cursor:pointer;color:var(--ink2)}
+.seg button+button{border-left:1px solid var(--line)}
+.seg button[data-on="1"]{background:var(--ink);color:#fff}
+.inp{border:1px solid var(--line);background:#fff;padding:8px 10px;border-radius:2px;font-size:13px;width:100%;color:var(--ink)}
+.row{display:flex;align-items:center;gap:10px}
+.grid{display:grid;gap:14px}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;font-size:10px;letter-spacing:.12em;color:var(--mute);font-weight:700;padding:6px 8px;border-bottom:1px solid var(--line)}
+td{padding:7px 8px;border-bottom:1px solid #F0F2F5}
+tr:hover td{background:#F8FAFB}
+.tag{font-size:11px;padding:2px 7px;border:1px solid var(--line);border-radius:999px;color:var(--ink2);white-space:nowrap}
+.tagbtn{background:#fff;cursor:pointer;font-family:inherit}
+.tagbtn:hover{border-color:var(--ink);color:var(--ink)}
+.tagbtn::after{content:"▾";margin-left:4px;color:var(--mute);font-size:9px}
+.cell{cursor:text}
+.cell:hover{box-shadow:inset 0 -1px 0 var(--ink2)}
+.gauge{display:grid;grid-template-columns:78% 22%;height:22px;align-items:stretch}
+.track{background:#E4E8ED;position:relative;overflow:hidden}
+.fill{height:100%;background:var(--good)}
+.spill{position:relative;background:repeating-linear-gradient(135deg,var(--over),var(--over) 4px,#D6604A 4px,#D6604A 8px);height:100%}
+.spillzone{border-left:2px solid var(--ink);position:relative}
+.catrow{padding:11px 0;border-bottom:1px solid #F0F2F5;cursor:pointer}
+.catrow:hover{background:#FAFBFC}
+.catrow.active{background:#F2F5F8}
+.matrix td,.matrix th{text-align:right;padding:6px 6px;font-size:12px}
+.matrix td:first-child,.matrix th:first-child{text-align:left}
+.matrix .wcol{cursor:pointer}
+.matrix .wcol:hover{background:#F2F5F8}
+@media (max-width:760px){.two{grid-template-columns:1fr!important}.hb{padding:14px 10px 50px}}
+@media (prefers-reduced-motion:no-preference){.fill,.spill{transition:width .35s ease}}
+`;
+
+      const SEED_CATS = [
+        ['고정비', 1500000],
+        ['식재료', 410000],
+        ['외식', 300000],
+        ['간식', 40000],
+        ['카페', 30000],
+        ['커피', 90000],
+        ['생활용품', 40000],
+        ['운동', 200000],
+        ['기타', 40000],
+      ];
+
+      const SEED_TX = [
+        ['고정비', 1, '진아용돈', 200000],
+        ['고정비', 1, '준수용돈', 200000],
+        ['외식', 4, '피자헛', 22620],
+        ['식재료', 3, '버섯짜장고기 등', 32550],
+        ['모임', 2, '예진회원님', 26400],
+        ['생활용품', 4, '클폼 생리대팩', 40000],
+        ['식재료', 8, '오아시스', 52000],
+        ['커피', 10, '디카페인', 18000],
+        ['식재료', 10, '아침빵 물밀소', 34500],
+        ['비정기', 11, '진아 스쿼시 라켓', 69000],
+        ['식재료', 11, '컬리 휴지·버터·원두·치즈케이크', 36840],
+        ['식재료', 10, 'B마트 계란·마늘·요거트·새우장 등', 33182],
+        ['외식', 12, '연변진미냉면', 32400],
+        ['간식', 12, '배민픽업 바나나·초콜렛', 12050],
+        ['식재료', 14, 'B마트 우유·볶음우동·요거트', 31294],
+        ['간식', 13, '호빵 1+1', 6400],
+        ['모임', 13, '혜진이 새들러 선물', 27500],
+        ['간식', 13, '콜라 등', 7500],
+        ['식재료', 13, '라면', 1000],
+        ['운동', 7, '스쿼시 스킬', 18050],
+        ['외식', 15, '롯데리아', 12706],
+        ['카페', 16, '까치호랑이 티룸', 20870],
+        ['운동', 15, '진아 운동', 62500],
+        ['운동', 15, '준수 운동', 77000],
+        ['기타', 18, '차와 도구', 38000],
+        ['식재료', 18, '비마트 밀키트·아침빵', 37807],
+        ['식재료', 19, '컬리 + 수세미·종이호일', 56343],
+        ['간식', 20, '서울역 간식', 7200],
+        ['간식', 21, '떡', 12600],
+        ['식재료', 21, '다시마·참기름 등', 25000],
+        ['식재료', 21, '각종 반찬', 41000],
+        ['식재료', 22, '버터', 14100],
+        ['외식', 23, '편의점 아침', 6700],
+        ['외식', 23, '키키노히호 라멘', 24500],
+        ['외식', 23, '피자헛', 26000],
+        ['간식', 23, '감자칩', 3400],
+        ['식재료', 25, '두부·콩나물 외', 11300],
+        ['간식', 25, '요거트 2+1', 9800],
+        ['식재료', 26, '반숙란 외', 33790],
+        ['식재료', 26, '날계란 외', 13000],
+        ['모임', 26, '딸기 2팩', 30000],
+        ['식재료', 30, '모닝마트', 24400],
+        ['식재료', 26, '연어회', 40000],
+        ['생활용품', 23, '무인양품 샴푸 외', 33000],
+        ['카페', 25, '탐탐 회동', 9900],
+        ['외식', 24, '쉑쉑버거', 17200],
+        ['식재료', 31, '이마트 자양점 요거트', 19720],
+        ['비정기', 31, '인사동 탐험(책·향·차·쟁반·점심)', 139000],
+      ];
+
+      // 은행 앱 내역에서 옮긴 2026년 7월 지출 ('식대' 태그는 외식으로 분류)
+      const SEED_JUL = [
+        ['외식', 20, '배달의민족', 31000],
+        ['외식', 20, '배달의민족', 32500],
+        ['외식', 19, '배달의민족', 23000],
+        ['외식', 18, '씨유 성수2가점', 3900],
+        ['외식', 18, '롸카두둘두(성수점)', 27600],
+        ['외식', 17, '배달의민족', 15400],
+        ['간식', 17, '옥수수', 5000],
+        ['식재료', 17, '오아시스', 36600],
+        ['외식', 17, '고흥만', 21000],
+        ['기타', 16, '부원약국', 7000],
+        ['외식', 16, 'MILS', 11520],
+        ['외식', 16, 'MAO', 24000],
+      ];
+
+      // 2026년 7월 예산
+      const JUL_BUDGET = {
+        식재료: 200000,
+        외식: 400000,
+        간식: 50000,
+        카페: 0,
+        커피: 90000,
+        생활용품: 50000,
+        기타: 100000,
+        의료: 0,
+        모임: 0,
+        교육: 0,
+        운동: 200000,
+        고정비: 1600000,
+        주식: 0,
+        비정기: 0,
+        여행: 0,
+      };
+
+      const FIXED = '고정비';
+      const WEEKLY_CATS = ['외식', '간식', '식재료']; // 주 탭에 남기는 항목. 나머지는 월 탭에서만 관리.
+      const DAILY_CATS = ['외식', '식재료']; // 월 예산이 아니라 하루 예산 × 그 달 일수로 계산하는 항목
+      const DAILY_DEFAULT = { 외식: 25000, 식재료: 20000 };
+
+      const won = (n) => '₩' + Math.round(n).toLocaleString('ko-KR');
+      const shortWon = (n) =>
+        n === 0 ? '—' : Math.round(n / 1000).toLocaleString('ko-KR') + '천';
+      const ymOf = (d) =>
+        `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      const shiftYm = (ym, k) => {
+        const [y, m] = ym.split('-').map(Number);
+        return ymOf(new Date(y, m - 1 + k, 1));
+      };
+      const labelYm = (ym) => {
+        const [y, m] = ym.split('-');
+        return `${y}년 ${Number(m)}월`;
+      };
+      const dim = (ym) => {
+        const [y, m] = ym.split('-').map(Number);
+        return new Date(y, m, 0).getDate();
+      };
+      // 월~일을 한 주로 묶는다. 1주차는 1일부터 그 달 첫 일요일까지(짧을 수 있음),
+      // 마지막 주도 월말까지만(짧을 수 있음), 그 사이는 항상 월요일~일요일 7일.
+      const isoDow = (y, m, day) =>
+        ((new Date(y, m - 1, day).getDay() + 6) % 7) + 1; // 월=1 ... 일=7
+      const weekOf = (ym, day) => {
+        const [y, m] = ym.split('-').map(Number);
+        const dow1 = isoDow(y, m, 1);
+        return Math.ceil((day + dow1 - 1) / 7);
+      };
+      const weekCount = (ym) => weekOf(ym, dim(ym));
+      const weekRange = (ym, w) => {
+        const [y, m] = ym.split('-').map(Number);
+        const dow1 = isoDow(y, m, 1);
+        const s = Math.max(1, (w - 1) * 7 - dow1 + 2);
+        const e = Math.min(dim(ym), w * 7 - dow1 + 1);
+        return { s, e, days: Math.max(0, e - s + 1) };
+      };
+
+      function seedData() {
+        const budgets = {};
+        SEED_CATS.forEach(([c, b]) => (budgets[c] = b));
+        return mergeSeeds({
+          cats: SEED_CATS.map((c) => c[0]),
+          months: {
+            '2025-12': {
+              budgets,
+              tx: SEED_TX.map(([cat, day, memo, amt], i) => ({
+                id: 's' + i,
+                cat,
+                day,
+                memo,
+                amt,
+              })),
+            },
+          },
+        });
+      }
+
+      // 저장된 데이터에 아직 없는 시드 내역만 채워 넣는다 (id 기준, 중복 없음)
+      function mergeSeeds(d) {
+        const n = JSON.parse(JSON.stringify(d));
+        const base = {};
+        SEED_CATS.forEach(([c, b]) => (base[c] = b));
+
+        const REMOVE_CATS = ['모임', '주식', '비정기', '여행', '의료', '교육'];
+        n.cats = n.cats.filter((c) => !REMOVE_CATS.includes(c));
+        if (!n.dailyBudgets) n.dailyBudgets = { ...DAILY_DEFAULT };
+        if (!n.tombstones) n.tombstones = {};
+        if (!n.funds)
+          n.funds = [{ id: 'f1', name: '경조사·선물', deposits: [] }];
+        // 이전 버전(연 예산 자동적립) 데이터를 자율 입금 형식으로 옮긴다
+        n.funds.forEach((f) => {
+          if (!f.deposits) f.deposits = [];
+          delete f.yearly;
+        });
+
+        if (!n.months['2026-07'])
+          n.months['2026-07'] = {
+            budgets: { ...(n.months['2025-12']?.budgets || base) },
+            tx: [],
+          };
+        const jul = n.months['2026-07'];
+
+        // 사용자가 정한 7월 예산은 한 번만 적용한다 (이후 수정한 값은 유지)
+        if (jul.budgetSeed !== '2026-07-v4') {
+          jul.budgets = { ...jul.budgets, ...JUL_BUDGET };
+          jul.budgetSeed = '2026-07-v4';
+        }
+
+        const have = new Set(jul.tx.map((t) => t.id));
+        SEED_JUL.forEach(([cat, day, memo, amt], i) => {
+          const id = 'j7' + i;
+          if (!have.has(id)) jul.tx.push({ id, cat, day, memo, amt });
+        });
+        // 삭제된(무덤 처리된) 항목은 다시 살아나지 않도록 걸러낸다
+        Object.values(n.months).forEach((m) => {
+          m.tx = m.tx.filter((t) => !n.tombstones[t.id]);
+        });
+        return n;
+      }
+
+      // 로컬 상태와 원격 상태를 합친다.
+      // - 예산·적립·분류 등 설정: 더 최근에 저장된(savedAt 큰) 쪽을 따른다
+      // - 거래: 양쪽의 합집합(id 기준). 같은 건은 수정시각(u) 큰 쪽. 삭제(tombstones)는 제거
+      function mergeStates(base, inc) {
+        if (!base) return inc;
+        if (!inc) return base;
+        const newer = (inc.savedAt || 0) >= (base.savedAt || 0) ? inc : base;
+        const out = JSON.parse(JSON.stringify(newer));
+        const tomb = { ...(base.tombstones || {}), ...(inc.tombstones || {}) };
+        out.tombstones = tomb;
+        const ymKeys = new Set([
+          ...Object.keys(base.months || {}),
+          ...Object.keys(inc.months || {}),
+        ]);
+        out.months = out.months || {};
+        ymKeys.forEach((ym) => {
+          const bm = (base.months && base.months[ym]) || {
+            tx: [],
+            budgets: {},
+          };
+          const im = (inc.months && inc.months[ym]) || { tx: [], budgets: {} };
+          const map = {};
+          [...(bm.tx || []), ...(im.tx || [])].forEach((t) => {
+            const p = map[t.id];
+            if (!p || (t.u || 0) >= (p.u || 0)) map[t.id] = t;
+          });
+          const nm = (newer.months && newer.months[ym]) || {};
+          out.months[ym] = {
+            ...(out.months[ym] || {}),
+            budgets: nm.budgets || bm.budgets || im.budgets || {},
+            tx: Object.values(map).filter((t) => !tomb[t.id]),
+          };
+          if (nm.budgetSeed) out.months[ym].budgetSeed = nm.budgetSeed;
+        });
+        return out;
+      }
+
+      function App() {
+        const [data, setData] = useState(null);
+        const [ym, setYm] = useState('2026-07');
+        const [view, setView] = useState('month');
+        const [wk, setWk] = useState(3);
+        const [filter, setFilter] = useState(null);
+        const [editBudget, setEditBudget] = useState(false);
+        const [editFunds, setEditFunds] = useState(false);
+        const [depDraft, setDepDraft] = useState({}); // {fundId: {amt, memo}}
+        const [edit, setEdit] = useState(null); // {id, field}
+        const [draft, setDraft] = useState('');
+        const [cut, setCut] = useState(10);
+        const [note, setNote] = useState('');
+        const [form, setForm] = useState({
+          cat: '식재료',
+          day: '',
+          memo: '',
+          amt: '',
+        });
+        const first = useRef(true);
+
+        useEffect(() => {
+          (async () => {
+            let local = null;
+            try {
+              const raw = localStorage.getItem(KEY);
+              local = raw ? JSON.parse(raw) : null;
+            } catch {}
+            let remote = null;
+            if (cloudOn()) {
+              try {
+                remote = await cloudGet();
+              } catch {}
+            }
+            let init;
+            if (local && remote) init = mergeStates(local, remote);
+            else init = remote || local || seedData();
+            init = mergeSeeds(init);
+            setData(init);
+            if (cloudOn()) {
+              try {
+                await cloudPut({ ...init, savedAt: Date.now() });
+              } catch {}
+            }
+          })();
+        }, []);
+
+        useEffect(() => {
+          if (!data) return;
+          if (first.current) {
+            first.current = false;
+            return;
+          }
+          const t = setTimeout(async () => {
+            const payload = { ...data, savedAt: Date.now() };
+            try {
+              localStorage.setItem(KEY, JSON.stringify(payload));
+            } catch {
+              setNote('저장 공간이 부족할 수 있습니다.');
+            }
+            if (cloudOn()) {
+              try {
+                let remote = null;
+                try {
+                  remote = await cloudGet();
+                } catch {}
+                const merged = mergeStates(remote, payload);
+                await cloudPut(merged);
+              } catch {
+                setNote(
+                  '클라우드 저장 실패 — 인터넷을 확인하세요. 이 기기에는 저장됐습니다.',
+                );
+              }
+            }
+          }, 600);
+          return () => clearTimeout(t);
+        }, [data]);
+
+        // 다른 기기·상대방의 변경을 주기적으로 가져와 합친다
+        useEffect(() => {
+          if (!cloudOn()) return;
+          let alive = true;
+          const pull = async () => {
+            try {
+              const remote = await cloudGet();
+              if (!remote || !alive) return;
+              setData((prev) => {
+                if (!prev) return prev;
+                const merged = mergeStates(prev, remote);
+                return JSON.stringify(merged) === JSON.stringify(prev)
+                  ? prev
+                  : merged;
+              });
+            } catch {}
+          };
+          const id = setInterval(pull, 20000);
+          const onVis = () => {
+            if (!document.hidden) pull();
+          };
+          window.addEventListener('focus', pull);
+          document.addEventListener('visibilitychange', onVis);
+          return () => {
+            alive = false;
+            clearInterval(id);
+            window.removeEventListener('focus', pull);
+            document.removeEventListener('visibilitychange', onVis);
+          };
+        }, []);
+
+        const month = useMemo(
+          () =>
+            data
+              ? data.months[ym] || { budgets: {}, tx: [] }
+              : { budgets: {}, tx: [] },
+          [data, ym],
+        );
+        const cats = data ? data.cats : [];
+        const nWeeks = weekCount(ym);
+        const isWeek = view === 'week';
+        const range = weekRange(ym, wk);
+        const scopeTx = useMemo(
+          () =>
+            isWeek
+              ? month.tx.filter((t) => weekOf(ym, t.day) === wk)
+              : month.tx,
+          [month, isWeek, wk, ym],
+        );
+
+        const spentBy = useMemo(() => {
+          const m = {};
+          scopeTx
+            .filter((t) => !t.fund)
+            .forEach((t) => (m[t.cat] = (m[t.cat] || 0) + t.amt));
+          return m;
+        }, [scopeTx]);
+
+        const dailyBudgets = data
+          ? data.dailyBudgets || DAILY_DEFAULT
+          : DAILY_DEFAULT;
+
+        // 외식·식재료는 하루 예산 × 일수. 나머지는 월 예산 × (해당 주 일수 / 그 달 일수).
+        const scopeBudget = (cat) => {
+          if (DAILY_CATS.includes(cat)) {
+            const daily = dailyBudgets[cat] ?? 0;
+            return daily * (isWeek ? range.days : dim(ym));
+          }
+          const b = month.budgets[cat] ?? 0;
+          if (!isWeek) return b;
+          if (!WEEKLY_CATS.includes(cat)) return 0;
+          return Math.round((b * range.days) / dim(ym) / 100) * 100;
+        };
+
+        const rows = useMemo(() => {
+          return cats
+            .filter((c) => !isWeek || WEEKLY_CATS.includes(c)) // 주 탭: 외식·간식·식재료만
+            .map((c) => {
+              const spent = spentBy[c] || 0;
+              const budget = scopeBudget(c);
+              return {
+                cat: c,
+                spent,
+                budget,
+                tracked: true,
+                diff: budget - spent,
+              };
+            })
+            .filter((r) => (isWeek ? true : true)) // 월 탭: 드롭다운의 모든 분류를 항상 표시
+            .sort((a, b) =>
+              isWeek
+                ? a.diff - b.diff
+                : cats.indexOf(a.cat) - cats.indexOf(b.cat),
+            );
+        }, [cats, spentBy, month, isWeek, wk, ym]);
+
+        const totalSpent = rows.reduce((s, r) => s + r.spent, 0);
+        const totalBudget = rows.reduce((s, r) => s + r.budget, 0);
+
+        // 주 × 분류 매트릭스 (월 기준)
+        const matrix = useMemo(() => {
+          const mtx = month.tx.filter((t) => !t.fund);
+          const used = cats.filter((c) => mtx.some((t) => t.cat === c));
+          const cells = {};
+          used.forEach((c) => (cells[c] = Array(nWeeks).fill(0)));
+          mtx.forEach((t) => {
+            if (cells[t.cat]) cells[t.cat][weekOf(ym, t.day) - 1] += t.amt;
+          });
+          const colTotal = Array(nWeeks).fill(0);
+          used.forEach((c) => cells[c].forEach((v, i) => (colTotal[i] += v)));
+          const colBudget = Array.from({ length: nWeeks }, (_, i) => {
+            const r = weekRange(ym, i + 1);
+            return used.reduce((s, c) => {
+              if (!WEEKLY_CATS.includes(c)) return s;
+              if (DAILY_CATS.includes(c))
+                return s + (dailyBudgets[c] ?? 0) * r.days;
+              return (
+                s +
+                Math.round(((month.budgets[c] ?? 0) * r.days) / dim(ym) / 100) *
+                  100
+              );
+            }, 0);
+          });
+          const colFixed = Array(nWeeks).fill(0);
+          mtx.forEach((t) => {
+            if (!WEEKLY_CATS.includes(t.cat))
+              colFixed[weekOf(ym, t.day) - 1] += t.amt;
+          });
+          return { used, cells, colTotal, colBudget, colFixed };
+        }, [cats, month, nWeeks, ym, dailyBudgets]);
+
+        const update = (fn) =>
+          setData((d) => {
+            const next = JSON.parse(JSON.stringify(d));
+            if (!next.months[ym])
+              next.months[ym] = {
+                budgets: { ...(d.months[shiftYm(ym, -1)]?.budgets || {}) },
+                tx: [],
+              };
+            fn(next);
+            return next;
+          });
+
+        const addTx = () => {
+          const amt = Number(String(form.amt).replace(/[^\d]/g, ''));
+          const day = Number(form.day);
+          if (!amt || !day || day < 1 || day > dim(ym)) {
+            setNote(`날짜(1–${dim(ym)})와 금액을 입력하세요.`);
+            return;
+          }
+          const isFund = form.cat.startsWith('fund:');
+          const fid = isFund ? form.cat.slice(5) : null;
+          const rec = {
+            id: Date.now() + '',
+            cat: isFund ? fundName(fid) : form.cat,
+            day,
+            memo: form.memo.trim(),
+            amt,
+            u: Date.now(),
+          };
+          if (fid) rec.fund = fid;
+          update((n) => n.months[ym].tx.push(rec));
+          setForm({ ...form, memo: '', amt: '' });
+          setNote('');
+          if (isWeek) setWk(weekOf(ym, day));
+        };
+
+        const delTx = (id) =>
+          update((n) => {
+            n.months[ym].tx = n.months[ym].tx.filter((t) => t.id !== id);
+            n.tombstones = n.tombstones || {};
+            n.tombstones[id] = Date.now();
+          });
+        const funds = data ? data.funds || [] : [];
+        const fundName = (fid) =>
+          (funds.find((f) => f.id === fid) || {}).name || '적립';
+
+        // 적립액은 직접 입력한 입금 내역의 합, 사용액은 해당 항목으로 기록된 지출의 합 (전체 기간 누적)
+        const fundStat = (f) => {
+          const deposited = (f.deposits || []).reduce((s, d) => s + d.amt, 0);
+          let spent = 0;
+          if (data)
+            Object.values(data.months).forEach((m) => {
+              m.tx.forEach((t) => {
+                if (t.fund === f.id) spent += t.amt;
+              });
+            });
+          return { deposited, spent, left: deposited - spent };
+        };
+
+        const setTxField = (id, field, value) =>
+          update((n) => {
+            const t = n.months[ym].tx.find((x) => x.id === id);
+            if (!t) return;
+            t.u = Date.now();
+            if (field === 'cat') {
+              if (String(value).startsWith('fund:')) {
+                const fid = String(value).slice(5);
+                t.fund = fid;
+                t.cat =
+                  (n.funds.find((f) => f.id === fid) || {}).name || '적립';
+              } else {
+                delete t.fund;
+                t.cat = value;
+              }
+              return;
+            }
+            if (field === 'amt') {
+              const v = Number(String(value).replace(/[^\d]/g, ''));
+              if (v > 0) t.amt = v;
+            } else if (field === 'day') {
+              const v = Number(value);
+              if (v >= 1 && v <= dim(ym)) t.day = v;
+            } else t[field] = String(value).trim();
+          });
+
+        const isEditing = (id, field) =>
+          edit && edit.id === id && edit.field === field;
+        const startEdit = (id, field, value) => {
+          if (isEditing(id, field)) return;
+          setEdit({ id, field });
+          setDraft(String(value ?? ''));
+        };
+        const commit = () => {
+          if (edit) setTxField(edit.id, edit.field, draft);
+          setEdit(null);
+        };
+        const onKey = (e) => {
+          if (e.key === 'Enter') commit();
+          if (e.key === 'Escape') setEdit(null);
+        };
+        const setBudget = (cat, v) =>
+          update((n) => {
+            n.months[ym].budgets[cat] =
+              Number(String(v).replace(/[^\d]/g, '')) || 0;
+          });
+        const setDailyBudget = (cat, v) =>
+          setData((d) => {
+            const n = JSON.parse(JSON.stringify(d));
+            if (!n.dailyBudgets) n.dailyBudgets = { ...DAILY_DEFAULT };
+            if (!n.tombstones) n.tombstones = {};
+            n.dailyBudgets[cat] = Number(String(v).replace(/[^\d]/g, '')) || 0;
+            return n;
+          });
+        const setFundName = (id, name) =>
+          setData((d) => {
+            const n = JSON.parse(JSON.stringify(d));
+            const f = n.funds.find((x) => x.id === id);
+            if (f) f.name = name;
+            return n;
+          });
+        const addFund = (name) => {
+          const nm = name.trim();
+          if (!nm) return;
+          setData((d) => ({
+            ...d,
+            funds: [
+              ...(d.funds || []),
+              { id: 'f' + Date.now(), name: nm, deposits: [] },
+            ],
+          }));
+        };
+        const delFund = (id) =>
+          setData((d) => ({ ...d, funds: d.funds.filter((f) => f.id !== id) }));
+        const addDeposit = (fid, amt, memo) => {
+          const v = Number(String(amt).replace(/[^\d]/g, ''));
+          if (!v) return;
+          setData((d) => {
+            const n = JSON.parse(JSON.stringify(d));
+            const f = n.funds.find((x) => x.id === fid);
+            if (f) {
+              if (!f.deposits) f.deposits = [];
+              f.deposits.push({
+                id: 'd' + Date.now(),
+                ym,
+                amt: v,
+                memo: (memo || '').trim(),
+              });
+            }
+            return n;
+          });
+        };
+        const delDeposit = (fid, did) =>
+          setData((d) => {
+            const n = JSON.parse(JSON.stringify(d));
+            const f = n.funds.find((x) => x.id === fid);
+            if (f) f.deposits = (f.deposits || []).filter((x) => x.id !== did);
+            return n;
+          });
+
+        const addCat = (name) => {
+          const c = name.trim();
+          if (!c) return;
+          setData((d) =>
+            d.cats.includes(c) ? d : { ...d, cats: [...d.cats, c] },
+          );
+        };
+
+        const monthSpentBy = useMemo(() => {
+          const m = {};
+          month.tx
+            .filter((t) => !t.fund)
+            .forEach((t) => (m[t.cat] = (m[t.cat] || 0) + t.amt));
+          return m;
+        }, [month]);
+        const monthTotalSpent = Object.values(monthSpentBy).reduce(
+          (a, b) => a + b,
+          0,
+        );
+        const nextYm = shiftYm(ym, 1);
+        const proposal = cats
+          .filter(
+            (c) =>
+              (monthSpentBy[c] || 0) > 0 ||
+              (month.budgets[c] ?? 0) > 0 ||
+              DAILY_CATS.includes(c),
+          )
+          .map((c) => {
+            const spent = monthSpentBy[c] || 0;
+            if (DAILY_CATS.includes(c)) {
+              const daily = dailyBudgets[c] ?? 0;
+              return {
+                cat: c,
+                spent,
+                next: daily * dim(nextYm),
+                week: daily * 7,
+                daily,
+              };
+            }
+            const inWeekly = WEEKLY_CATS.includes(c);
+            const next = inWeekly
+              ? Math.round((spent * (100 - cut)) / 100 / 1000) * 1000
+              : spent;
+            return {
+              cat: c,
+              spent,
+              next,
+              week: inWeekly ? Math.round(next / (dim(ym) / 7) / 100) * 100 : 0,
+            };
+          })
+          .sort((a, b) => b.next - a.next);
+        const propTotal = proposal.reduce((s, p) => s + p.next, 0);
+
+        const applyNext = () => {
+          setData((d) => {
+            const n = JSON.parse(JSON.stringify(d));
+            const b = {};
+            proposal.forEach((p) => (b[p.cat] = p.next));
+            n.months[nextYm] = { budgets: b, tx: n.months[nextYm]?.tx || [] };
+            return n;
+          });
+          setYm(nextYm);
+          setNote(`${labelYm(nextYm)} 예산을 저장했습니다.`);
+        };
+
+        if (!data)
+          return (
+            <div className='hb'>
+              <style>{CSS}</style>
+              <div className='wrap' style={{ color: '#8592A3' }}>
+                불러오는 중…
+              </div>
+            </div>
+          );
+
+        const visibleTx = [...scopeTx]
+          .filter((t) => !filter || t.cat === filter)
+          .sort((a, b) => b.day - a.day || b.id.localeCompare(a.id));
+        const scopeLabel = isWeek
+          ? `${wk}주차 (${range.s}–${range.e}일)`
+          : labelYm(ym);
+
+        return (
+          <div className='hb'>
+            <style>{CSS}</style>
+            <div className='wrap grid' style={{ gap: 14 }}>
+              <div className='card' style={{ padding: '16px 18px' }}>
+                <div
+                  className='row'
+                  style={{
+                    justifyContent: 'space-between',
+                    flexWrap: 'wrap',
+                    gap: 12,
+                  }}
+                >
+                  <div>
+                    <div className='eyebrow'>{labelYm(ym)}</div>
+                    <div className='h1'>{scopeLabel}</div>
+                  </div>
+                  <div className='row' style={{ flexWrap: 'wrap' }}>
+                    <div className='seg'>
+                      <button
+                        data-on={isWeek ? '0' : '1'}
+                        onClick={() => setView('month')}
+                      >
+                        월별
+                      </button>
+                      <button
+                        data-on={isWeek ? '1' : '0'}
+                        onClick={() => setView('week')}
+                      >
+                        주별
+                      </button>
+                    </div>
+                    <button
+                      className='btn'
+                      onClick={() => {
+                        setYm(shiftYm(ym, -1));
+                        setWk(1);
+                      }}
+                    >
+                      ◀
+                    </button>
+                    <button
+                      className='btn'
+                      onClick={() => {
+                        setYm(shiftYm(ym, 1));
+                        setWk(1);
+                      }}
+                    >
+                      ▶
+                    </button>
+                  </div>
+                </div>
+
+                {isWeek && (
+                  <div
+                    className='row'
+                    style={{ marginTop: 12, gap: 6, flexWrap: 'wrap' }}
+                  >
+                    {Array.from({ length: nWeeks }, (_, i) => i + 1).map(
+                      (w) => {
+                        const r = weekRange(ym, w);
+                        return (
+                          <button
+                            key={w}
+                            className='btn'
+                            style={
+                              wk === w
+                                ? {
+                                    background: 'var(--ink)',
+                                    color: '#fff',
+                                    borderColor: 'var(--ink)',
+                                  }
+                                : {}
+                            }
+                            onClick={() => setWk(w)}
+                            disabled={r.days === 0}
+                          >
+                            {w}주차{' '}
+                            <span
+                              className='num'
+                              style={{ opacity: 0.7, fontSize: 11 }}
+                            >
+                              {r.s}–{r.e}
+                            </span>
+                          </button>
+                        );
+                      },
+                    )}
+                  </div>
+                )}
+
+                <div
+                  className='grid'
+                  style={{
+                    gridTemplateColumns: 'repeat(3,1fr)',
+                    marginTop: 16,
+                    gap: 0,
+                  }}
+                >
+                  {[
+                    [isWeek ? '주 예산' : '예산', totalBudget, 'var(--ink2)'],
+                    ['사용', totalSpent, 'var(--ink)'],
+                    [
+                      '남은 돈',
+                      totalBudget - totalSpent,
+                      totalBudget - totalSpent < 0
+                        ? 'var(--over)'
+                        : 'var(--good)',
+                    ],
+                  ].map(([l, v, c], i) => (
+                    <div
+                      key={l}
+                      style={{
+                        borderLeft: i === 0 ? 'none' : '1px solid var(--line)',
+                        paddingLeft: i === 0 ? 0 : 14,
+                      }}
+                    >
+                      <div className='eyebrow'>{l}</div>
+                      <div
+                        className='num'
+                        style={{
+                          fontSize: 20,
+                          fontWeight: 700,
+                          color: c,
+                          marginTop: 4,
+                        }}
+                      >
+                        {won(v)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {isWeek && (
+                  <div
+                    style={{
+                      fontSize: 12,
+                      color: 'var(--mute)',
+                      marginTop: 10,
+                    }}
+                  >
+                    주 탭은 외식·간식·식재료만 다룹니다. 나머지 분류는 월 탭에서
+                    확인하세요.
+                  </div>
+                )}
+              </div>
+
+              {note && (
+                <div
+                  className='card'
+                  style={{
+                    padding: '10px 14px',
+                    fontSize: 13,
+                    borderColor: 'var(--ink2)',
+                  }}
+                >
+                  {note}
+                </div>
+              )}
+
+              <div className='card'>
+                <div
+                  className='row'
+                  style={{ justifyContent: 'space-between', marginBottom: 12 }}
+                >
+                  <div>
+                    <div className='eyebrow'>어디서 새고 있나</div>
+                    <div
+                      style={{
+                        fontSize: 12,
+                        color: 'var(--mute)',
+                        marginTop: 3,
+                      }}
+                    >
+                      세로선 오른쪽 빗금 = 예산 초과분
+                    </div>
+                  </div>
+                  <button
+                    className='btn'
+                    onClick={() => setEditBudget(!editBudget)}
+                  >
+                    {editBudget ? '완료' : '월 예산 수정'}
+                  </button>
+                </div>
+
+                {rows.length === 0 && (
+                  <div
+                    style={{
+                      fontSize: 13,
+                      color: 'var(--mute)',
+                      padding: '16px 0',
+                    }}
+                  >
+                    이 기간에는 기록이 없습니다.
+                  </div>
+                )}
+
+                {rows.map((r) => {
+                  const over = Math.max(0, r.spent - r.budget);
+                  const fillPct = r.budget
+                    ? Math.min(100, (r.spent / r.budget) * 100)
+                    : r.spent
+                      ? 100
+                      : 0;
+                  const spillPct = r.budget
+                    ? Math.min(100, ((over / r.budget) * 100) / 0.28)
+                    : 0;
+                  const isOver = over > 0;
+                  return (
+                    <div
+                      key={r.cat}
+                      className={'catrow' + (filter === r.cat ? ' active' : '')}
+                      onClick={() => setFilter(filter === r.cat ? null : r.cat)}
+                    >
+                      <div
+                        className='row'
+                        style={{
+                          justifyContent: 'space-between',
+                          marginBottom: 6,
+                        }}
+                      >
+                        <div className='row' style={{ gap: 8 }}>
+                          <strong style={{ fontSize: 14 }}>{r.cat}</strong>
+                          {isOver && (
+                            <span
+                              className='tag'
+                              style={{
+                                color: 'var(--over)',
+                                borderColor: 'var(--over)',
+                              }}
+                            >
+                              +{won(over)}
+                            </span>
+                          )}
+                        </div>
+                        <div
+                          className='num'
+                          style={{ fontSize: 13, color: 'var(--ink2)' }}
+                        >
+                          {won(r.spent)}{' '}
+                          <span style={{ color: 'var(--mute)' }}>
+                            / {won(r.budget)}
+                          </span>
+                        </div>
+                      </div>
+                      <div className='gauge'>
+                        <div className='track'>
+                          <div
+                            className='fill'
+                            style={{
+                              width: fillPct + '%',
+                              background: isOver
+                                ? '#8C2F1C'
+                                : !WEEKLY_CATS.includes(r.cat)
+                                  ? 'var(--fixed)'
+                                  : 'var(--good)',
+                            }}
+                          />
+                        </div>
+                        <div className='spillzone'>
+                          {isOver && (
+                            <div
+                              className='spill'
+                              style={{ width: spillPct + '%' }}
+                            />
+                          )}
+                        </div>
+                      </div>
+                      {editBudget && (
+                        <div
+                          className='row'
+                          style={{ marginTop: 8, flexWrap: 'wrap' }}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          {DAILY_CATS.includes(r.cat) ? (
+                            <>
+                              <span
+                                style={{ fontSize: 12, color: 'var(--mute)' }}
+                              >
+                                하루 예산
+                              </span>
+                              <input
+                                className='inp num'
+                                style={{ width: 100 }}
+                                value={dailyBudgets[r.cat] ?? 0}
+                                onChange={(e) =>
+                                  setDailyBudget(r.cat, e.target.value)
+                                }
+                                inputMode='numeric'
+                              />
+                              <span
+                                className='num'
+                                style={{ fontSize: 12, color: 'var(--mute)' }}
+                              >
+                                → 이 달{' '}
+                                {won((dailyBudgets[r.cat] ?? 0) * dim(ym))}
+                              </span>
+                            </>
+                          ) : (
+                            <>
+                              <span
+                                style={{ fontSize: 12, color: 'var(--mute)' }}
+                              >
+                                월 예산
+                              </span>
+                              <input
+                                className='inp num'
+                                style={{ width: 140 }}
+                                value={month.budgets[r.cat] ?? 0}
+                                onChange={(e) =>
+                                  setBudget(r.cat, e.target.value)
+                                }
+                                inputMode='numeric'
+                              />
+                              {WEEKLY_CATS.includes(r.cat) && (
+                                <span
+                                  className='num'
+                                  style={{ fontSize: 12, color: 'var(--mute)' }}
+                                >
+                                  → 주{' '}
+                                  {won(
+                                    Math.round(
+                                      (month.budgets[r.cat] ?? 0) /
+                                        (dim(ym) / 7) /
+                                        100,
+                                    ) * 100,
+                                  )}
+                                </span>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+
+                {editBudget && (
+                  <div className='row' style={{ marginTop: 12 }}>
+                    <input
+                      className='inp'
+                      style={{ width: 180 }}
+                      placeholder='분류 추가'
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          addCat(e.target.value);
+                          setBudget(e.target.value.trim(), 0);
+                          e.target.value = '';
+                        }
+                      }}
+                    />
+                    <span style={{ fontSize: 12, color: 'var(--mute)' }}>
+                      Enter로 추가
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* 적립 항목 — 월별 뷰에서만 표시 */}
+              {!isWeek && (
+                <div className='card'>
+                  <div
+                    className='row'
+                    style={{ justifyContent: 'space-between', marginBottom: 4 }}
+                  >
+                    <div>
+                      <div className='eyebrow'>적립 항목</div>
+                      <div
+                        style={{
+                          fontSize: 12,
+                          color: 'var(--mute)',
+                          marginTop: 3,
+                        }}
+                      >
+                        생일·경조사처럼 특정 달에 몰리는 지출. 적립도 직접
+                        원하는 때 원하는 만큼 넣습니다.
+                      </div>
+                    </div>
+                    <button
+                      className='btn'
+                      onClick={() => setEditFunds(!editFunds)}
+                    >
+                      {editFunds ? '완료' : '항목 관리'}
+                    </button>
+                  </div>
+
+                  {funds.length === 0 && (
+                    <div
+                      style={{
+                        fontSize: 13,
+                        color: 'var(--mute)',
+                        padding: '14px 0',
+                      }}
+                    >
+                      항목이 없습니다. '항목 관리'에서 추가하세요.
+                    </div>
+                  )}
+
+                  {funds.map((f) => {
+                    const st = fundStat(f);
+                    const over = Math.max(0, st.spent - st.deposited);
+                    const fillPct = st.deposited
+                      ? Math.min(100, (st.spent / st.deposited) * 100)
+                      : st.spent
+                        ? 100
+                        : 0;
+                    const spillPct = st.deposited
+                      ? Math.min(100, ((over / st.deposited) * 100) / 0.28)
+                      : 100;
+                    const dep = depDraft[f.id] || { amt: '', memo: '' };
+                    const setDep = (patch) =>
+                      setDepDraft((s) => ({
+                        ...s,
+                        [f.id]: { ...dep, ...patch },
+                      }));
+                    return (
+                      <div
+                        key={f.id}
+                        style={{
+                          padding: '12px 0',
+                          borderBottom: '1px solid #F0F2F5',
+                        }}
+                      >
+                        <div
+                          className='row'
+                          style={{
+                            justifyContent: 'space-between',
+                            marginBottom: 6,
+                            flexWrap: 'wrap',
+                            gap: 6,
+                          }}
+                        >
+                          <strong style={{ fontSize: 14 }}>{f.name}</strong>
+                          <div className='num' style={{ fontSize: 13 }}>
+                            <span style={{ color: 'var(--mute)' }}>잔액 </span>
+                            <strong
+                              style={{
+                                color:
+                                  st.left < 0 ? 'var(--over)' : 'var(--good)',
+                                fontSize: 15,
+                              }}
+                            >
+                              {won(st.left)}
+                            </strong>
+                          </div>
+                        </div>
+                        <div className='gauge'>
+                          <div className='track'>
+                            <div
+                              className='fill'
+                              style={{
+                                width: fillPct + '%',
+                                background: over ? '#8C2F1C' : 'var(--amber)',
+                              }}
+                            />
+                          </div>
+                          <div className='spillzone'>
+                            {over > 0 && (
+                              <div
+                                className='spill'
+                                style={{ width: spillPct + '%' }}
+                              />
+                            )}
+                          </div>
+                        </div>
+                        <div
+                          className='num'
+                          style={{
+                            fontSize: 12,
+                            color: 'var(--mute)',
+                            marginTop: 5,
+                          }}
+                        >
+                          적립 {won(st.deposited)} · 사용 {won(st.spent)}
+                        </div>
+
+                        <div
+                          className='row'
+                          style={{ marginTop: 9, gap: 6, flexWrap: 'wrap' }}
+                        >
+                          <input
+                            className='inp num'
+                            style={{ width: 120 }}
+                            placeholder='적립할 금액'
+                            inputMode='numeric'
+                            value={dep.amt}
+                            onChange={(e) => setDep({ amt: e.target.value })}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                addDeposit(f.id, dep.amt, dep.memo);
+                                setDep({ amt: '', memo: '' });
+                              }
+                            }}
+                          />
+                          <input
+                            className='inp'
+                            style={{ width: 140 }}
+                            placeholder='메모(선택)'
+                            value={dep.memo}
+                            onChange={(e) => setDep({ memo: e.target.value })}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                addDeposit(f.id, dep.amt, dep.memo);
+                                setDep({ amt: '', memo: '' });
+                              }
+                            }}
+                          />
+                          <button
+                            className='btn solid'
+                            onClick={() => {
+                              addDeposit(f.id, dep.amt, dep.memo);
+                              setDep({ amt: '', memo: '' });
+                            }}
+                          >
+                            {labelYm(ym)}에 적립
+                          </button>
+                        </div>
+
+                        {editFunds && (
+                          <div style={{ marginTop: 10 }}>
+                            <div className='row' style={{ flexWrap: 'wrap' }}>
+                              <input
+                                className='inp'
+                                style={{ width: 150 }}
+                                value={f.name}
+                                onChange={(e) =>
+                                  setFundName(f.id, e.target.value)
+                                }
+                              />
+                              <button
+                                className='btn'
+                                onClick={() => delFund(f.id)}
+                              >
+                                항목 삭제
+                              </button>
+                            </div>
+                            {(f.deposits || []).length > 0 && (
+                              <table style={{ marginTop: 8 }}>
+                                <thead>
+                                  <tr>
+                                    <th>월</th>
+                                    <th>메모</th>
+                                    <th style={{ textAlign: 'right' }}>금액</th>
+                                    <th />
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {[...(f.deposits || [])]
+                                    .sort((a, b) => b.ym.localeCompare(a.ym))
+                                    .map((d) => (
+                                      <tr key={d.id}>
+                                        <td
+                                          className='num'
+                                          style={{ color: 'var(--mute)' }}
+                                        >
+                                          {d.ym}
+                                        </td>
+                                        <td>{d.memo || '—'}</td>
+                                        <td
+                                          className='num'
+                                          style={{ textAlign: 'right' }}
+                                        >
+                                          {won(d.amt)}
+                                        </td>
+                                        <td style={{ width: 22 }}>
+                                          <button
+                                            onClick={() =>
+                                              delDeposit(f.id, d.id)
+                                            }
+                                            aria-label='삭제'
+                                            style={{
+                                              border: 'none',
+                                              background: 'none',
+                                              color: 'var(--mute)',
+                                              cursor: 'pointer',
+                                              fontSize: 13,
+                                            }}
+                                          >
+                                            ×
+                                          </button>
+                                        </td>
+                                      </tr>
+                                    ))}
+                                </tbody>
+                              </table>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+
+                  {editFunds && (
+                    <div className='row' style={{ marginTop: 12 }}>
+                      <input
+                        className='inp'
+                        style={{ width: 200 }}
+                        placeholder='항목 추가 (예: 여행, 명절)'
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            addFund(e.target.value);
+                            e.target.value = '';
+                          }
+                        }}
+                      />
+                      <span style={{ fontSize: 12, color: 'var(--mute)' }}>
+                        Enter로 추가
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* 주 × 분류 비교표 */}
+              <div className='card' style={{ overflowX: 'auto' }}>
+                <div className='eyebrow'>주차별 비교 · {labelYm(ym)}</div>
+                <div
+                  style={{
+                    fontSize: 12,
+                    color: 'var(--mute)',
+                    margin: '4px 0 10px',
+                  }}
+                >
+                  단위 천원. 주차 머리글을 누르면 그 주로 이동합니다.
+                </div>
+                <table className='matrix' style={{ minWidth: 520 }}>
+                  <thead>
+                    <tr>
+                      <th>분류</th>
+                      {Array.from({ length: nWeeks }, (_, i) => (
+                        <th
+                          key={i}
+                          className='wcol'
+                          onClick={() => {
+                            setView('week');
+                            setWk(i + 1);
+                          }}
+                          style={{
+                            textDecoration: 'underline',
+                            textUnderlineOffset: 3,
+                          }}
+                        >
+                          {i + 1}주
+                        </th>
+                      ))}
+                      <th>합계</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {matrix.used
+                      .filter((c) => WEEKLY_CATS.includes(c))
+                      .map((c) => {
+                        const total = matrix.cells[c].reduce(
+                          (a, b) => a + b,
+                          0,
+                        );
+                        const peak = Math.max(...matrix.cells[c]);
+                        return (
+                          <tr key={c}>
+                            <td style={{ fontWeight: 600 }}>{c}</td>
+                            {matrix.cells[c].map((v, i) => (
+                              <td
+                                key={i}
+                                className='num'
+                                style={{
+                                  color:
+                                    v === 0
+                                      ? '#C3CBD4'
+                                      : v === peak
+                                        ? 'var(--over)'
+                                        : 'var(--ink2)',
+                                  fontWeight: v === peak && v > 0 ? 700 : 400,
+                                }}
+                              >
+                                {shortWon(v)}
+                              </td>
+                            ))}
+                            <td className='num' style={{ fontWeight: 700 }}>
+                              {shortWon(total)}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    <tr>
+                      <td
+                        style={{
+                          fontWeight: 700,
+                          borderTop: '1px solid var(--line)',
+                        }}
+                      >
+                        주 사용 합계
+                      </td>
+                      {matrix.colTotal.map((v, i) => (
+                        <td
+                          key={i}
+                          className='num'
+                          style={{
+                            fontWeight: 700,
+                            borderTop: '1px solid var(--line)',
+                          }}
+                        >
+                          {shortWon(v - matrix.colFixed[i])}
+                        </td>
+                      ))}
+                      <td
+                        className='num'
+                        style={{
+                          fontWeight: 700,
+                          borderTop: '1px solid var(--line)',
+                        }}
+                      >
+                        {shortWon(
+                          matrix.colTotal.reduce((a, b) => a + b, 0) -
+                            matrix.colFixed.reduce((a, b) => a + b, 0),
+                        )}
+                      </td>
+                    </tr>
+                    <tr>
+                      <td style={{ color: 'var(--mute)' }}>주 예산</td>
+                      {matrix.colBudget.map((v, i) => (
+                        <td
+                          key={i}
+                          className='num'
+                          style={{ color: 'var(--mute)' }}
+                        >
+                          {shortWon(v)}
+                        </td>
+                      ))}
+                      <td className='num' style={{ color: 'var(--mute)' }}>
+                        {shortWon(matrix.colBudget.reduce((a, b) => a + b, 0))}
+                      </td>
+                    </tr>
+                    <tr>
+                      <td style={{ fontWeight: 700 }}>차액</td>
+                      {matrix.colBudget.map((b, i) => {
+                        const d = b - (matrix.colTotal[i] - matrix.colFixed[i]);
+                        const sign = d > 0 ? '+' : '−';
+                        return (
+                          <td
+                            key={i}
+                            className='num'
+                            style={{
+                              color: d < 0 ? 'var(--over)' : 'var(--good)',
+                              fontWeight: 700,
+                            }}
+                          >
+                            {Math.abs(d) < 500
+                              ? '—'
+                              : sign +
+                                Math.round(Math.abs(d) / 1000).toLocaleString(
+                                  'ko-KR',
+                                ) +
+                                '천'}
+                          </td>
+                        );
+                      })}
+                      <td />
+                    </tr>
+                    {matrix.colFixed.some((v) => v > 0) && (
+                      <tr>
+                        <td style={{ color: 'var(--mute)' }}>
+                          월 단위 항목(별도)
+                        </td>
+                        {matrix.colFixed.map((v, i) => (
+                          <td
+                            key={i}
+                            className='num'
+                            style={{ color: 'var(--mute)' }}
+                          >
+                            {shortWon(v)}
+                          </td>
+                        ))}
+                        <td className='num' style={{ color: 'var(--mute)' }}>
+                          {shortWon(matrix.colFixed.reduce((a, b) => a + b, 0))}
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              <div
+                className='grid two'
+                style={{ gridTemplateColumns: '1.15fr .85fr' }}
+              >
+                <div className='card'>
+                  <div className='eyebrow' style={{ marginBottom: 10 }}>
+                    지출 기록
+                  </div>
+                  <div
+                    className='grid'
+                    style={{
+                      gridTemplateColumns: '70px 110px 1fr 120px',
+                      gap: 8,
+                      alignItems: 'center',
+                    }}
+                  >
+                    <input
+                      className='inp num'
+                      placeholder='일'
+                      inputMode='numeric'
+                      value={form.day}
+                      onChange={(e) =>
+                        setForm({ ...form, day: e.target.value })
+                      }
+                    />
+                    <select
+                      className='inp'
+                      value={form.cat}
+                      onChange={(e) =>
+                        setForm({ ...form, cat: e.target.value })
+                      }
+                    >
+                      <optgroup label='월 예산'>
+                        {cats.map((c) => (
+                          <option key={c} value={c}>
+                            {c}
+                          </option>
+                        ))}
+                      </optgroup>
+                      {funds.length > 0 && (
+                        <optgroup label='적립 항목'>
+                          {funds.map((f) => (
+                            <option key={f.id} value={'fund:' + f.id}>
+                              {f.name}
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
+                    </select>
+                    <input
+                      className='inp'
+                      placeholder='내용'
+                      value={form.memo}
+                      onChange={(e) =>
+                        setForm({ ...form, memo: e.target.value })
+                      }
+                      onKeyDown={(e) => e.key === 'Enter' && addTx()}
+                    />
+                    <input
+                      className='inp num'
+                      placeholder='금액'
+                      inputMode='numeric'
+                      value={form.amt}
+                      onChange={(e) =>
+                        setForm({ ...form, amt: e.target.value })
+                      }
+                      onKeyDown={(e) => e.key === 'Enter' && addTx()}
+                    />
+                  </div>
+                  <button
+                    className='btn solid'
+                    style={{ marginTop: 10 }}
+                    onClick={addTx}
+                  >
+                    추가
+                  </button>
+
+                  <div
+                    className='row'
+                    style={{ marginTop: 16, justifyContent: 'space-between' }}
+                  >
+                    <div style={{ fontSize: 12, color: 'var(--mute)' }}>
+                      {scopeLabel} · {filter ? `${filter} ` : ''}
+                      {visibleTx.length}건
+                    </div>
+                    {filter && (
+                      <button className='btn' onClick={() => setFilter(null)}>
+                        필터 해제
+                      </button>
+                    )}
+                  </div>
+
+                  <div
+                    style={{ maxHeight: 420, overflowY: 'auto', marginTop: 6 }}
+                  >
+                    <table>
+                      <thead>
+                        <tr>
+                          <th style={{ width: 34 }}>일</th>
+                          <th style={{ width: 96 }}>분류</th>
+                          <th>내용</th>
+                          <th style={{ textAlign: 'right' }}>금액</th>
+                          <th />
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {visibleTx.map((t) => (
+                          <tr key={t.id}>
+                            <td
+                              className='num cell'
+                              style={{ color: 'var(--mute)' }}
+                              onClick={() => startEdit(t.id, 'day', t.day)}
+                            >
+                              {isEditing(t.id, 'day') ? (
+                                <input
+                                  className='inp num'
+                                  style={{ padding: '3px 4px', fontSize: 12 }}
+                                  autoFocus
+                                  inputMode='numeric'
+                                  value={draft}
+                                  onChange={(e) => setDraft(e.target.value)}
+                                  onBlur={commit}
+                                  onKeyDown={onKey}
+                                />
+                              ) : (
+                                t.day
+                              )}
+                            </td>
+                            <td style={{ width: 96 }}>
+                              {isEditing(t.id, 'cat') ? (
+                                <select
+                                  className='inp'
+                                  style={{ padding: '4px 6px', fontSize: 12 }}
+                                  autoFocus
+                                  value={t.fund ? 'fund:' + t.fund : t.cat}
+                                  onChange={(e) => {
+                                    setTxField(t.id, 'cat', e.target.value);
+                                    setEdit(null);
+                                  }}
+                                  onBlur={() => setEdit(null)}
+                                >
+                                  <optgroup label='월 예산'>
+                                    {cats.map((c) => (
+                                      <option key={c} value={c}>
+                                        {c}
+                                      </option>
+                                    ))}
+                                  </optgroup>
+                                  {funds.length > 0 && (
+                                    <optgroup label='적립 항목'>
+                                      {funds.map((f) => (
+                                        <option
+                                          key={f.id}
+                                          value={'fund:' + f.id}
+                                        >
+                                          {f.name}
+                                        </option>
+                                      ))}
+                                    </optgroup>
+                                  )}
+                                </select>
+                              ) : (
+                                <button
+                                  className='tag tagbtn'
+                                  onClick={() =>
+                                    setEdit({ id: t.id, field: 'cat' })
+                                  }
+                                  title='분류 변경'
+                                  style={
+                                    t.fund
+                                      ? {
+                                          borderColor: 'var(--amber)',
+                                          color: 'var(--amber)',
+                                        }
+                                      : {}
+                                  }
+                                >
+                                  {t.fund ? '◇ ' : ''}
+                                  {t.cat}
+                                </button>
+                              )}
+                            </td>
+                            <td
+                              className='cell'
+                              onClick={() => startEdit(t.id, 'memo', t.memo)}
+                            >
+                              {isEditing(t.id, 'memo') ? (
+                                <input
+                                  className='inp'
+                                  style={{ padding: '3px 6px', fontSize: 12 }}
+                                  autoFocus
+                                  value={draft}
+                                  onChange={(e) => setDraft(e.target.value)}
+                                  onBlur={commit}
+                                  onKeyDown={onKey}
+                                />
+                              ) : (
+                                t.memo || (
+                                  <span style={{ color: '#C3CBD4' }}>
+                                    내용 없음
+                                  </span>
+                                )
+                              )}
+                            </td>
+                            <td
+                              className='num cell'
+                              style={{ textAlign: 'right' }}
+                              onClick={() => startEdit(t.id, 'amt', t.amt)}
+                            >
+                              {isEditing(t.id, 'amt') ? (
+                                <input
+                                  className='inp num'
+                                  style={{
+                                    padding: '3px 6px',
+                                    fontSize: 12,
+                                    textAlign: 'right',
+                                  }}
+                                  autoFocus
+                                  inputMode='numeric'
+                                  value={draft}
+                                  onChange={(e) => setDraft(e.target.value)}
+                                  onBlur={commit}
+                                  onKeyDown={onKey}
+                                />
+                              ) : (
+                                won(t.amt)
+                              )}
+                            </td>
+                            <td style={{ width: 26 }}>
+                              <button
+                                onClick={() => delTx(t.id)}
+                                aria-label='삭제'
+                                style={{
+                                  border: 'none',
+                                  background: 'none',
+                                  color: 'var(--mute)',
+                                  cursor: 'pointer',
+                                  fontSize: 14,
+                                }}
+                              >
+                                ×
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <div className='card' style={{ alignSelf: 'start' }}>
+                  <div className='eyebrow'>{labelYm(nextYm)} 예산 짜기</div>
+                  <div className='row' style={{ marginTop: 12, gap: 10 }}>
+                    <span style={{ fontSize: 13 }}>절감 목표</span>
+                    <input
+                      type='range'
+                      min='0'
+                      max='30'
+                      step='5'
+                      value={cut}
+                      onChange={(e) => setCut(Number(e.target.value))}
+                      style={{ flex: 1 }}
+                    />
+                    <span
+                      className='num'
+                      style={{ fontSize: 13, width: 34, textAlign: 'right' }}
+                    >
+                      {cut}%
+                    </span>
+                  </div>
+                  <div
+                    style={{ fontSize: 12, color: 'var(--mute)', marginTop: 6 }}
+                  >
+                    {labelYm(ym)} 실사용액에서 {cut}%를 뺀 값. 고정비는 그대로.
+                    외식·식재료는 하루 예산({won(dailyBudgets['외식'] ?? 0)}/
+                    {won(dailyBudgets['식재료'] ?? 0)})에 그 달 일수를 곱한
+                    값이라 절감률과 무관합니다.
+                  </div>
+                  <table style={{ marginTop: 12 }}>
+                    <thead>
+                      <tr>
+                        <th>분류</th>
+                        <th style={{ textAlign: 'right' }}>월 예산</th>
+                        <th style={{ textAlign: 'right' }}>주 예산</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {proposal.map((p) => (
+                        <tr key={p.cat}>
+                          <td>{p.cat}</td>
+                          <td
+                            className='num'
+                            style={{ textAlign: 'right', fontWeight: 600 }}
+                          >
+                            {won(p.next)}
+                          </td>
+                          <td
+                            className='num'
+                            style={{ textAlign: 'right', color: 'var(--mute)' }}
+                          >
+                            {p.week ? won(p.week) : '—'}
+                          </td>
+                        </tr>
+                      ))}
+                      <tr>
+                        <td style={{ fontWeight: 700 }}>합계</td>
+                        <td
+                          className='num'
+                          style={{ textAlign: 'right', fontWeight: 700 }}
+                        >
+                          {won(propTotal)}
+                        </td>
+                        <td
+                          className='num'
+                          style={{ textAlign: 'right', color: 'var(--mute)' }}
+                        >
+                          {won(proposal.reduce((s, p) => s + p.week, 0))}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                  <div
+                    style={{ fontSize: 12, color: 'var(--mute)', marginTop: 8 }}
+                  >
+                    {labelYm(ym)} 사용 {won(monthTotalSpent)} → {won(propTotal)}
+                  </div>
+                  <button
+                    className='btn solid'
+                    style={{ marginTop: 12, width: '100%' }}
+                    onClick={applyNext}
+                  >
+                    {labelYm(nextYm)} 예산으로 저장
+                  </button>
+                </div>
+              </div>
+
+              <div
+                style={{
+                  fontSize: 11,
+                  color: 'var(--mute)',
+                  textAlign: 'center',
+                }}
+              >
+                목록의 날짜·분류·내용·금액을 눌러 바로 고칠 수 있습니다. Enter로
+                저장, Esc로 취소. 게이지의 분류를 누르면 해당 지출만 봅니다.
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+    </script>
+
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('sw.js').catch(() => {});
+        });
+      }
+    </script>
+  </body>
+</html>
