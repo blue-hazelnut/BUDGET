@@ -140,7 +140,7 @@ tr:hover td{background:#F8FAFB}
 .matrix td:first-child,.matrix th:first-child{text-align:left}
 .matrix .wcol{cursor:pointer}
 .matrix .wcol:hover{background:#F2F5F8}
-@media (max-width:760px){.two{grid-template-columns:1fr!important}.hb{padding:14px 10px 50px}.entry-grid{grid-template-columns:1fr!important}}
+@media (max-width:760px){.two{grid-template-columns:1fr!important}.hb{padding:14px 10px 50px}}
 @media (prefers-reduced-motion:no-preference){.fill,.spill{transition:width .35s ease}}
 `;
 
@@ -1588,7 +1588,7 @@ tr:hover td{background:#F8FAFB}
                   <div
                     className='grid entry-grid'
                     style={{
-                      gridTemplateColumns: '70px 110px 1fr 120px',
+                      gridTemplateColumns: '70px 1fr 120px',
                       gap: 8,
                       alignItems: 'center',
                     }}
@@ -1627,21 +1627,22 @@ tr:hover td{background:#F8FAFB}
                       )}
                     </select>
                     <input
-                      className='inp'
-                      placeholder='내용'
-                      value={form.memo}
-                      onChange={(e) =>
-                        setForm({ ...form, memo: e.target.value })
-                      }
-                      onKeyDown={(e) => e.key === 'Enter' && addTx()}
-                    />
-                    <input
                       className='inp num'
                       placeholder='금액'
                       inputMode='numeric'
                       value={form.amt}
                       onChange={(e) =>
                         setForm({ ...form, amt: e.target.value })
+                      }
+                      onKeyDown={(e) => e.key === 'Enter' && addTx()}
+                    />
+                    <input
+                      className='inp'
+                      placeholder='내용'
+                      style={{ gridColumn: '1 / -1' }}
+                      value={form.memo}
+                      onChange={(e) =>
+                        setForm({ ...form, memo: e.target.value })
                       }
                       onKeyDown={(e) => e.key === 'Enter' && addTx()}
                     />
