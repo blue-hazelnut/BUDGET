@@ -1854,7 +1854,7 @@ tr:hover td{background:#F8FAFB}
                     const plans = f.plans || [];
                     const planTotal = plans.reduce((s, p) => s + p.amt, 0);
                     const st = fundStat(f);
-                    const need = planTotal - st.deposited;
+                    const need = planTotal - st.left;
                     const pd = planDraft[f.id] || { name: '', amt: '' };
                     const setPd = (patch) =>
                       setPlanDraft((s) => ({
@@ -1964,7 +1964,7 @@ tr:hover td{background:#F8FAFB}
                             marginTop: 8,
                           }}
                         >
-                          현재 적립 {won(st.deposited)} ·{' '}
+                          적립 {won(st.deposited)} · 사용 {won(st.spent)} ·{' '}
                           {need > 0 ? (
                             <span style={{ color: 'var(--over)' }}>
                               부족 {won(need)}
