@@ -1,5 +1,5 @@
 // 가계부 오프라인 서비스워커
-const CACHE = "budget-v2";
+const CACHE = "budget-v3";
 const ASSETS = [
   "./",
   "./index.html",
