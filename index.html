@@ -391,9 +391,9 @@ tr:hover td{background:#F8FAFB}
         const [editBudget, setEditBudget] = useState(false);
         const [editFunds, setEditFunds] = useState(false);
         const [depDraft, setDepDraft] = useState({}); // {fundId: {amt, memo}}
+        const [planDraft, setPlanDraft] = useState({}); // {fundId: {name, amt}}
         const [edit, setEdit] = useState(null); // {id, field}
         const [draft, setDraft] = useState('');
-        const [nextDraft, setNextDraft] = useState({}); // 다음달 예산 짜기: 사용자가 직접 고친 항목만 담음
         const [note, setNote] = useState('');
         const [form, setForm] = useState({
           cat: '식재료',
@@ -490,11 +490,6 @@ tr:hover td{background:#F8FAFB}
             document.removeEventListener('visibilitychange', onVis);
           };
         }, []);
-
-        // 보고 있는 달이 바뀌면 다음달 예산 초안도 새로 시작한다
-        useEffect(() => {
-          setNextDraft({});
-        }, [ym]);
 
         const month = useMemo(
           () =>
@@ -754,6 +749,27 @@ tr:hover td{background:#F8FAFB}
             if (f) f.deposits = (f.deposits || []).filter((x) => x.id !== did);
             return n;
           });
+        const addPlan = (fid, name, amt) => {
+          const nm = (name || '').trim();
+          const v = Number(String(amt).replace(/[^\d]/g, ''));
+          if (!nm || !v) return;
+          setData((d) => {
+            const n = JSON.parse(JSON.stringify(d));
+            const f = n.funds.find((x) => x.id === fid);
+            if (f) {
+              if (!f.plans) f.plans = [];
+              f.plans.push({ id: 'p' + Date.now(), name: nm, amt: v });
+            }
+            return n;
+          });
+        };
+        const delPlan = (fid, pid) =>
+          setData((d) => {
+            const n = JSON.parse(JSON.stringify(d));
+            const f = n.funds.find((x) => x.id === fid);
+            if (f) f.plans = (f.plans || []).filter((x) => x.id !== pid);
+            return n;
+          });
 
         const addCat = (name) => {
           const c = name.trim();
@@ -763,69 +779,6 @@ tr:hover td{background:#F8FAFB}
           );
         };
 
-        const monthSpentBy = useMemo(() => {
-          const m = {};
-          month.tx
-            .filter((t) => !t.fund)
-            .forEach((t) => (m[t.cat] = (m[t.cat] || 0) + t.amt));
-          return m;
-        }, [month]);
-        const monthTotalSpent = Object.values(monthSpentBy).reduce(
-          (a, b) => a + b,
-          0,
-        );
-        const nextYm = shiftYm(ym, 1);
-        // 전월(=지금 보고 있는 달) 예산을 기준값으로 삼는다.
-        // 외식·식재료는 하루 예산 × 일수라 항상 자동 계산되고, 나머지는 전월 예산을 시작점으로 직접 조정한다.
-        const prevBudgetOf = (c) =>
-          DAILY_CATS.includes(c)
-            ? (dailyBudgets[c] ?? 0) * dim(ym)
-            : (month.budgets[c] ?? 0);
-        const nextValueOf = (c) => {
-          if (DAILY_CATS.includes(c)) return (dailyBudgets[c] ?? 0) * dim(nextYm);
-          return nextDraft[c] !== undefined ? nextDraft[c] : (month.budgets[c] ?? 0);
-        };
-        const proposal = cats
-          .filter(
-            (c) =>
-              (monthSpentBy[c] || 0) > 0 ||
-              (month.budgets[c] ?? 0) > 0 ||
-              DAILY_CATS.includes(c),
-          )
-          .map((c) => {
-            const prev = prevBudgetOf(c);
-            const next = nextValueOf(c);
-            return {
-              cat: c,
-              spent: monthSpentBy[c] || 0,
-              prev,
-              next,
-              diff: next - prev,
-              editable: !DAILY_CATS.includes(c),
-            };
-          })
-          .sort((a, b) => b.next - a.next);
-        const propTotal = proposal.reduce((s, p) => s + p.next, 0);
-        const prevTotal = proposal.reduce((s, p) => s + p.prev, 0);
-
-        const setDraftAmt = (cat, v) =>
-          setNextDraft((d) => ({
-            ...d,
-            [cat]: Number(String(v).replace(/[^\d]/g, '')) || 0,
-          }));
-
-        const applyNext = () => {
-          setData((d) => {
-            const n = JSON.parse(JSON.stringify(d));
-            const b = {};
-            proposal.forEach((p) => (b[p.cat] = p.next));
-            n.months[nextYm] = { budgets: b, tx: n.months[nextYm]?.tx || [] };
-            return n;
-          });
-          setNextDraft({});
-          setYm(nextYm);
-          setNote(`${labelYm(nextYm)} 예산을 저장했습니다.`);
-        };
 
         if (!data)
           return (
@@ -1875,124 +1828,157 @@ tr:hover td{background:#F8FAFB}
                 </div>
 
                 <div className='card' style={{ alignSelf: 'start' }}>
-                  <div className='eyebrow'>{labelYm(nextYm)} 예산 짜기</div>
+                  <div className='eyebrow'>경조사 예산 짜기</div>
                   <div
                     style={{ fontSize: 12, color: 'var(--mute)', marginTop: 6 }}
                   >
-                    {labelYm(ym)} 예산을 시작점으로 항목별 금액을 직접
-                    조정하세요. 외식·식재료는 하루 예산(
-                    {won(dailyBudgets['외식'] ?? 0)}/
-                    {won(dailyBudgets['식재료'] ?? 0)})에 그 달 일수를 곱해
-                    자동 계산됩니다.
+                    결혼식·돌잔치처럼 예상되는 경조사를 항목별로 적어두면
+                    합계가 목표 금액이 됩니다. 적립 항목의 적립액과 비교해
+                    부족한 금액을 확인하세요.
                   </div>
-                  <table style={{ marginTop: 12 }}>
-                    <thead>
-                      <tr>
-                        <th>분류</th>
-                        <th style={{ textAlign: 'right' }}>전월 예산</th>
-                        <th style={{ textAlign: 'right' }}>
-                          {labelYm(nextYm)} 예산
-                        </th>
-                        <th style={{ textAlign: 'right' }}>증감</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {proposal.map((p) => (
-                        <tr key={p.cat}>
-                          <td>{p.cat}</td>
-                          <td
-                            className='num'
-                            style={{ textAlign: 'right', color: 'var(--mute)' }}
-                          >
-                            {won(p.prev)}
-                          </td>
-                          <td className='num' style={{ textAlign: 'right' }}>
-                            {p.editable ? (
-                              <input
-                                className='inp num'
-                                style={{
-                                  width: 110,
-                                  textAlign: 'right',
-                                  padding: '4px 6px',
-                                }}
-                                value={p.next}
-                                onChange={(e) =>
-                                  setDraftAmt(p.cat, e.target.value)
-                                }
-                                inputMode='numeric'
-                              />
-                            ) : (
-                              <span style={{ fontWeight: 600 }}>
-                                {won(p.next)}
-                              </span>
-                            )}
-                          </td>
-                          <td
-                            className='num'
-                            style={{
-                              textAlign: 'right',
-                              color:
-                                p.diff > 0
-                                  ? 'var(--over)'
-                                  : p.diff < 0
-                                    ? 'var(--good)'
-                                    : 'var(--mute)',
-                            }}
-                          >
-                            {p.diff === 0
-                              ? '—'
-                              : (p.diff > 0 ? '+' : '-') +
-                                won(Math.abs(p.diff))}
-                          </td>
-                        </tr>
-                      ))}
-                      <tr>
-                        <td style={{ fontWeight: 700 }}>합계</td>
-                        <td
-                          className='num'
-                          style={{ textAlign: 'right', color: 'var(--mute)' }}
-                        >
-                          {won(prevTotal)}
-                        </td>
-                        <td
-                          className='num'
-                          style={{ textAlign: 'right', fontWeight: 700 }}
-                        >
-                          {won(propTotal)}
-                        </td>
-                        <td
-                          className='num'
+
+                  {funds.length === 0 && (
+                    <div
+                      style={{
+                        fontSize: 13,
+                        color: 'var(--mute)',
+                        padding: '14px 0',
+                      }}
+                    >
+                      먼저 위 '적립 항목'에서 항목을 추가하세요.
+                    </div>
+                  )}
+
+                  {funds.map((f) => {
+                    const plans = f.plans || [];
+                    const planTotal = plans.reduce((s, p) => s + p.amt, 0);
+                    const st = fundStat(f);
+                    const need = planTotal - st.deposited;
+                    const pd = planDraft[f.id] || { name: '', amt: '' };
+                    const setPd = (patch) =>
+                      setPlanDraft((s) => ({
+                        ...s,
+                        [f.id]: { ...pd, ...patch },
+                      }));
+                    const submitPlan = () => {
+                      addPlan(f.id, pd.name, pd.amt);
+                      setPd({ name: '', amt: '' });
+                    };
+                    return (
+                      <div
+                        key={f.id}
+                        style={{
+                          padding: '12px 0',
+                          borderBottom: '1px solid #F0F2F5',
+                        }}
+                      >
+                        <div
+                          className='row'
                           style={{
-                            textAlign: 'right',
-                            fontWeight: 700,
-                            color:
-                              propTotal - prevTotal > 0
-                                ? 'var(--over)'
-                                : propTotal - prevTotal < 0
-                                  ? 'var(--good)'
-                                  : 'var(--mute)',
+                            justifyContent: 'space-between',
+                            marginBottom: 6,
+                            flexWrap: 'wrap',
+                            gap: 6,
                           }}
                         >
-                          {propTotal === prevTotal
-                            ? '—'
-                            : (propTotal > prevTotal ? '+' : '-') +
-                              won(Math.abs(propTotal - prevTotal))}
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
-                  <div
-                    style={{ fontSize: 12, color: 'var(--mute)', marginTop: 8 }}
-                  >
-                    참고: {labelYm(ym)} 실사용액 {won(monthTotalSpent)}
-                  </div>
-                  <button
-                    className='btn solid'
-                    style={{ marginTop: 12, width: '100%' }}
-                    onClick={applyNext}
-                  >
-                    {labelYm(nextYm)} 예산으로 저장
-                  </button>
+                          <strong style={{ fontSize: 14 }}>{f.name}</strong>
+                          <div className='num' style={{ fontSize: 13 }}>
+                            <span style={{ color: 'var(--mute)' }}>
+                              목표{' '}
+                            </span>
+                            <strong style={{ fontSize: 15 }}>
+                              {won(planTotal)}
+                            </strong>
+                          </div>
+                        </div>
+
+                        {plans.length > 0 && (
+                          <table>
+                            <tbody>
+                              {plans.map((p) => (
+                                <tr key={p.id}>
+                                  <td>{p.name}</td>
+                                  <td
+                                    className='num'
+                                    style={{ textAlign: 'right' }}
+                                  >
+                                    {won(p.amt)}
+                                  </td>
+                                  <td style={{ width: 22 }}>
+                                    <button
+                                      onClick={() => delPlan(f.id, p.id)}
+                                      aria-label='삭제'
+                                      style={{
+                                        border: 'none',
+                                        background: 'none',
+                                        color: 'var(--mute)',
+                                        cursor: 'pointer',
+                                        fontSize: 13,
+                                      }}
+                                    >
+                                      ×
+                                    </button>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        )}
+
+                        <div
+                          className='row'
+                          style={{ marginTop: 9, gap: 6, flexWrap: 'wrap' }}
+                        >
+                          <input
+                            className='inp'
+                            style={{ width: 140 }}
+                            placeholder='예상 항목(예: ○○ 결혼식)'
+                            value={pd.name}
+                            onChange={(e) => setPd({ name: e.target.value })}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') submitPlan();
+                            }}
+                          />
+                          <input
+                            className='inp num'
+                            style={{ width: 110 }}
+                            placeholder='예상 금액'
+                            inputMode='numeric'
+                            value={pd.amt}
+                            onChange={(e) => setPd({ amt: e.target.value })}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') submitPlan();
+                            }}
+                          />
+                          <button className='btn solid' onClick={submitPlan}>
+                            추가
+                          </button>
+                        </div>
+
+                        <div
+                          className='num'
+                          style={{
+                            fontSize: 12,
+                            color: 'var(--mute)',
+                            marginTop: 8,
+                          }}
+                        >
+                          현재 적립 {won(st.deposited)} ·{' '}
+                          {need > 0 ? (
+                            <span style={{ color: 'var(--over)' }}>
+                              부족 {won(need)}
+                            </span>
+                          ) : plans.length > 0 ? (
+                            <span style={{ color: 'var(--good)' }}>
+                              목표 달성
+                            </span>
+                          ) : (
+                            '—'
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
 
