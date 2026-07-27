@@ -281,6 +281,12 @@ tr:hover td{background:#F8FAFB}
         const e = Math.min(dim(ym), w * 7 - dow1 + 1);
         return { s, e, days: Math.max(0, e - s + 1) };
       };
+      // 오늘이 ym 안에 있으면 오늘이 속한 주차를, 아니면 1주차를 반환
+      const weekOfToday = (ym) => {
+        const today = new Date();
+        const day = ymOf(today) === ym ? today.getDate() : 1;
+        return weekOf(ym, Math.min(day, dim(ym)));
+      };
 
       function seedData() {
         const budgets = {};
@@ -385,8 +391,8 @@ tr:hover td{background:#F8FAFB}
       function App() {
         const [data, setData] = useState(null);
         const [ym, setYm] = useState('2026-07');
-        const [view, setView] = useState('month');
-        const [wk, setWk] = useState(3);
+        const [view, setView] = useState('week');
+        const [wk, setWk] = useState(() => weekOfToday('2026-07'));
         const [filter, setFilter] = useState(null);
         const [editBudget, setEditBudget] = useState(false);
         const [editFunds, setEditFunds] = useState(false);
