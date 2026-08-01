@@ -398,6 +398,7 @@ tr:hover td{background:#F8FAFB}
         const [editFunds, setEditFunds] = useState(false);
         const [depDraft, setDepDraft] = useState({}); // {fundId: {amt, memo}}
         const [planDraft, setPlanDraft] = useState({}); // {fundId: {name, amt}}
+        const [settleFundId, setSettleFundId] = useState('');
         const [edit, setEdit] = useState(null); // {id, field}
         const [draft, setDraft] = useState('');
         const [note, setNote] = useState('');
@@ -642,6 +643,11 @@ tr:hover td{background:#F8FAFB}
         const funds = data ? data.funds || [] : [];
         const fundName = (fid) =>
           (funds.find((f) => f.id === fid) || {}).name || '적립';
+        const defaultFundId =
+          (funds.find((f) => f.name === '비정기') || funds[0] || {}).id || '';
+        const activeFundId = funds.some((f) => f.id === settleFundId)
+          ? settleFundId
+          : defaultFundId;
 
         // 적립액은 직접 입력한 입금 내역의 합, 사용액은 해당 항목으로 기록된 지출의 합 (전체 기간 누적)
         const fundStat = (f) => {
@@ -755,6 +761,40 @@ tr:hover td{background:#F8FAFB}
             if (f) f.deposits = (f.deposits || []).filter((x) => x.id !== did);
             return n;
           });
+
+        // 주간 정산: 그 주 예산에서 남은 돈을 적립 항목에 입금하고, 중복 정산을 막기 위해 기록해 둔다
+        const settlement = (month.weekSettlements || {})[wk];
+        const weekLeft = totalBudget - totalSpent;
+        const settleWeek = (fid) =>
+          update((n) => {
+            const m = n.months[ym];
+            if (!m.weekSettlements) m.weekSettlements = {};
+            if (m.weekSettlements[wk]) return;
+            const f = n.funds.find((x) => x.id === fid);
+            if (!f) return;
+            if (!f.deposits) f.deposits = [];
+            const depId = 'd' + Date.now();
+            f.deposits.push({
+              id: depId,
+              ym,
+              amt: weekLeft,
+              memo: `${wk}주차 정산`,
+            });
+            m.weekSettlements[wk] = { fundId: fid, depositId: depId, amt: weekLeft };
+          });
+        const cancelSettle = () =>
+          update((n) => {
+            const m = n.months[ym];
+            const st = m.weekSettlements && m.weekSettlements[wk];
+            if (!st) return;
+            const f = n.funds.find((x) => x.id === st.fundId);
+            if (f)
+              f.deposits = (f.deposits || []).filter(
+                (d) => d.id !== st.depositId,
+              );
+            delete m.weekSettlements[wk];
+          });
+
         const addPlan = (fid, name, amt) => {
           const nm = (name || '').trim();
           const v = Number(String(amt).replace(/[^\d]/g, ''));
@@ -945,6 +985,83 @@ tr:hover td{background:#F8FAFB}
                   >
                     주 탭은 외식·간식·식재료만 다룹니다. 나머지 분류는 월 탭에서
                     확인하세요.
+                  </div>
+                )}
+                {isWeek && (
+                  <div
+                    style={{
+                      marginTop: 12,
+                      paddingTop: 12,
+                      borderTop: '1px solid var(--line)',
+                    }}
+                  >
+                    {settlement ? (
+                      <div
+                        className='row'
+                        style={{
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          flexWrap: 'wrap',
+                          gap: 8,
+                        }}
+                      >
+                        <div style={{ fontSize: 13, color: 'var(--good)' }}>
+                          ✓ {wk}주차 정산 완료 ·{' '}
+                          <span className='num'>{won(settlement.amt)}</span> →{' '}
+                          {fundName(settlement.fundId)}
+                        </div>
+                        <button
+                          className='btn'
+                          style={{ fontSize: 12 }}
+                          onClick={cancelSettle}
+                        >
+                          정산 취소
+                        </button>
+                      </div>
+                    ) : weekLeft <= 0 ? (
+                      <div style={{ fontSize: 12, color: 'var(--mute)' }}>
+                        이번 주는 남은 돈이 없어서 정산할 게 없어요.
+                      </div>
+                    ) : funds.length === 0 ? (
+                      <div style={{ fontSize: 12, color: 'var(--mute)' }}>
+                        적립 항목이 있어야 정산할 수 있어요. '적립 항목'에서
+                        먼저 만들어 주세요.
+                      </div>
+                    ) : (
+                      <div
+                        className='row'
+                        style={{
+                          alignItems: 'center',
+                          flexWrap: 'wrap',
+                          gap: 8,
+                        }}
+                      >
+                        <div style={{ fontSize: 13, color: 'var(--ink2)' }}>
+                          이번 주 남은 돈{' '}
+                          <strong className='num'>{won(weekLeft)}</strong>
+                        </div>
+                        {funds.length > 1 && (
+                          <select
+                            className='inp'
+                            style={{ fontSize: 12, padding: '4px 8px' }}
+                            value={activeFundId}
+                            onChange={(e) => setSettleFundId(e.target.value)}
+                          >
+                            {funds.map((f) => (
+                              <option key={f.id} value={f.id}>
+                                {f.name}
+                              </option>
+                            ))}
+                          </select>
+                        )}
+                        <button
+                          className='btn solid'
+                          onClick={() => settleWeek(activeFundId)}
+                        >
+                          정산완료 · {fundName(activeFundId)}에 적립
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
