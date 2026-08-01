@@ -509,6 +509,24 @@ tr:hover td{background:#F8FAFB}
         const nWeeks = weekCount(ym);
         const isWeek = view === 'week';
         const range = weekRange(ym, wk);
+        // 주별 화면에서는 정확히 한 주씩, 월 경계에서는 전/다음 달 마지막·첫 주로 넘어간다
+        const goPrev = () => {
+          if (isWeek && wk > 1) {
+            setWk(wk - 1);
+            return;
+          }
+          const py = shiftYm(ym, -1);
+          setYm(py);
+          setWk(isWeek ? weekCount(py) : 1);
+        };
+        const goNext = () => {
+          if (isWeek && wk < nWeeks) {
+            setWk(wk + 1);
+            return;
+          }
+          setYm(shiftYm(ym, 1));
+          setWk(1);
+        };
         const scopeTx = useMemo(
           () =>
             isWeek
@@ -875,22 +893,10 @@ tr:hover td{background:#F8FAFB}
                         주별
                       </button>
                     </div>
-                    <button
-                      className='btn'
-                      onClick={() => {
-                        setYm(shiftYm(ym, -1));
-                        setWk(1);
-                      }}
-                    >
+                    <button className='btn' onClick={goPrev}>
                       ◀
                     </button>
-                    <button
-                      className='btn'
-                      onClick={() => {
-                        setYm(shiftYm(ym, 1));
-                        setWk(1);
-                      }}
-                    >
+                    <button className='btn' onClick={goNext}>
                       ▶
                     </button>
                   </div>
